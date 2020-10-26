@@ -238,12 +238,7 @@ const getCurrentDomWithStyles = () => {
      */
     function computeLinkNode(node, importCss) {
         if (importCss && node.rel.toLowerCase() === 'stylesheet') {
-            try {
-                return getCss(node);
-            }
-            catch(e) {
-                return loadCss(node);
-            }
+            return loadCss(node);
         }
 
         return Promise.resolve(null);
