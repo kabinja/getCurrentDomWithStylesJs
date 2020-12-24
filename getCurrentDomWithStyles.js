@@ -172,6 +172,10 @@ const getCurrentDomWithStyles = () => {
             return true;
         }
 
+        if(isEmptyTextNode(node)){
+            return true;
+        }
+
         if (node.tagName === undefined) {
             return false;
         }
@@ -179,6 +183,44 @@ const getCurrentDomWithStyles = () => {
         return ignoreTags.has(node.tagName.toUpperCase());
     }
 
+     /**
+     * Checks if an element is an empty text node
+     * 
+     * Elements are considered to be empty text node if they only contain blank characters, meaning white space and charriage characters
+     * 
+     * @param {Element} node    Element being tested.
+     * 
+     * @returns {boolean}       True if element 'node' is of type TEXT_NODE and only contain blank characters, false otherwise.
+     */
+    function isEmptyTextNode(node){
+        if(node.nodeType !== Node.TEXT_NODE){
+            return false;
+        }
+
+        const length = node.nodeValue.length;
+        let index = 0;
+
+        while(index < length) {
+            if(!isBlankCharacter(node.nodeValue.charCodeAt(index++))){
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Checks if a character is a blank character
+     * 
+     * A charactere is considered blank if it is either a white space or charriage characters
+     * 
+     * @param {int} charCode    UTF-8 code of the character
+     * 
+     * @returns {boolean}       True if 'charCode' is a blank space, False otherwie.
+     */
+    function isBlankCharacter(charCode) {
+        return 9 === charCode || 32 === charCode || 0xB === charCode || 0xC === charCode || 10 === charCode || 13 === charCode;
+    }
 
     /**
      * Checks if an element has style properties.
