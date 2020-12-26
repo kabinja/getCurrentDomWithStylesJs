@@ -27,13 +27,74 @@
  * 
  * CSS stylesheet are copied in the document, and computed style are inlined in the dom.
  * 
- * @returns {Promise.string}   Root element of the new clone containing all the styles.
+ * @returns {Promise<string>}   Root element of the new clone containing all the styles.
  */
-const getCurrentDomWithStyles = () => {
-    const noStyleTags = new Set(['BASE', 'HEAD', 'HTML', 'META', 'NOFRAME', 'NOSCRIPT', 'PARAM', 'SCRIPT', 'STYLE', 'TITLE']);
-    const ignoreTags = new Set(['SCRIPT', 'NOSCRIPT']);
+const getCurrentDomWithStyles = async () => {
+    const noStyleTags = new Set(['BASE', 'HEAD', 'HTML', 'META', 'NOFRAME', 'NOSCRIPT', 'PARAM', 'SCRIPT', 'STYLE', 'TITLE', 'LINK']);
+    const ignoreTags = new Set(['SCRIPT', 'NOSCRIPT', 'STYLE']);
     let defaultStylesCache = new Map();
 
+    async function initializeStyleSheets(){
+        const sheets = [];
+
+        for (let i = 0; i < document.styleSheets.length; i++) {
+            const styleSheet = document.styleSheets[i];
+            let rules = [];
+
+            try{
+                rules = styleSheet.cssRules;
+            }
+            catch {
+                rules = await loadCss(styleSheet.href);
+            }
+            
+            sheets.push(rules);
+        }
+
+        return Promise.resolve(sheets);
+    }
+
+    /**
+     * Returns a new style element by downloading the css file using url defined in the provided Element.
+     * 
+     * 
+     * @param {Element} node            Element with tag name link and attribute rel set to stylesheet.
+     * 
+     * @returns {Promise<CssRuleList>}       Style element created by downloading a css style sheet and reject if the download fails.
+     */
+    async function loadCss(href) {
+        let css = '';
+        try {
+            const response = await fetch(href);
+            css = response.text();
+        }
+        catch (e) {
+            css = await loadCssWithCorsAnywhere(href);
+        }
+
+        const doc = document.implementation.createHTMLDocument("");
+        const styleElement = document.createElement('style');
+        styleElement.textContent = css;
+        
+        const style = doc.body.appendChild(styleElement);
+
+        return Promise.resolve(style.sheet.cssRules);        
+    }
+
+    /**
+     * Returns a new style element by downloading the css file using url defined in the provided Element using the proxy cors-anywhere.
+     * 
+     * 
+     * @param {string} href            Element with tag name link and attribute rel set to stylesheet.
+     * 
+     * @returns {Promise<Element>}       Style element created by downloading a css style sheet and reject if the download fails.
+     */
+    async function loadCssWithCorsAnywhere(href){
+        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+        const response = await fetch(proxyUrl + href);
+        return response.text();
+    }
+    
     /**
      * Check if an Element node has a style defined to it.
      * 
@@ -154,7 +215,7 @@ const getCurrentDomWithStyles = () => {
             return false;
         }
 
-        return node.tagName.toUpperCase() === tagName.toUpperCase();
+        return node.tagName.toLowerCase() === tagName.toLowerCase();
     }
 
 
@@ -194,6 +255,10 @@ const getCurrentDomWithStyles = () => {
      */
     function isEmptyTextNode(node){
         if(node.nodeType !== Node.TEXT_NODE){
+            return false;
+        }
+
+        if((node.previousElementSibling && hasTagName(node.previousElementSibling, 'span')) || (node.nextElementSibling && hasTagName(node.nextElementSibling, 'span'))) {
             return false;
         }
 
@@ -247,7 +312,7 @@ const getCurrentDomWithStyles = () => {
      * 
      * @param {Element} node            Element with tag name img.
      * 
-     * @returns {Promise.Element}       Empty image keeping information about its size.
+     * @returns {Element}       Empty image keeping information about its size.
      */
     function computeImageNode(node) {
         const img = document.createElement('img');
@@ -264,90 +329,7 @@ const getCurrentDomWithStyles = () => {
         img.height = node.height;
         img.class = node.class;
 
-        return Promise.resolve(img);
-    }
-
-
-    /**
-     * Returns a new style element if stylesheet or null if the link is ignored.
-     * 
-     * A new style element is created when dealing with style sheet. If the css rules are available locally, they are directly applied otherwise the css file is loaded.
-     * 
-     * @param {Element} node            Element with tag name link.
-     * @param {boolean} importCss   Whether or not to import css style sheet or to inline on css properties
-     * 
-     * @returns {Promise.Element}       Style Element if link refers to a style sheet, null otherwise.
-     */
-    function computeLinkNode(node, importCss) {
-        if (importCss && node.rel.toLowerCase() === 'stylesheet') {
-            return loadCss(node);
-        }
-
-        return Promise.resolve(null);
-    }
-
-
-    /**
-     * Returns a new style element by reading the rules defined in the provided Element.
-     * 
-     * 
-     * @param {Element} node            Element with tag name link and attribute rel set to stylesheet.
-     * 
-     * @returns {Promise.Element}       Style element created by reading the css rules defined in node.
-     * @throws                          If CORS does not allow to access the css rules the function throws an exception.
-     */
-    function getCss(node) {
-        let css = '';
-
-        for (let i = 0; i < node.sheet.cssRules.length; ++i) {
-            css.concat(node.sheet.cssRule[i], '\n');
-        }
-
-        const styleNode = document.createElement('style');
-        styleNode.innerText = css;
-
-        return Promise.resolve(node.sheet);
-    }
-
-
-    /**
-     * Returns a new style element by downloading the css file using url defined in the provided Element.
-     * 
-     * 
-     * @param {Element} node            Element with tag name link and attribute rel set to stylesheet.
-     * 
-     * @returns {Promise.Element}       Style element created by downloading a css style sheet and reject if the download fails.
-     */
-    async function loadCss(node) {
-        try {
-            const response = await fetch(node.href);
-
-            const styleNode = document.createElement('style');
-            styleNode.innerText = await response.text();
-
-            return styleNode;
-        }
-        catch {
-            return loadCssWithCorsAnywhere(node);
-        }
-    }
-
-    /**
-     * Returns a new style element by downloading the css file using url defined in the provided Element using the proxy cors-anywhere.
-     * 
-     * 
-     * @param {Element} node            Element with tag name link and attribute rel set to stylesheet.
-     * 
-     * @returns {Promise.Element}       Style element created by downloading a css style sheet and reject if the download fails.
-     */
-    async function loadCssWithCorsAnywhere(node){
-        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-        const response = await fetch(proxyUrl + node.href);
-
-        const styleNode = document.createElement('style');
-        styleNode.innerText = await response.text();
-
-        return styleNode;
+        return img;
     }
 
     /**
@@ -356,17 +338,11 @@ const getCurrentDomWithStyles = () => {
      * 
      * @param {Element} clone       Target cloned element.
      * @param {Element} node        Source element to be cloned.
-     * @param {boolean} importCss   Whether or not to import css style sheet or to inline on css properties
      * 
      * @returns {void}
      */
-    function updateStyle(clone, node, importCss) {
-        let defaultStyle = null;
-        
-        if(importCss){
-            defaultStyle = getDefaultStyle(node);
-        }
-    
+    function updateStyle(clone, node) {
+        let defaultStyle = getDefaultStyle(node);    
         const cssLength = numberProperties(node);
 
         clone.style = {};
@@ -392,36 +368,26 @@ const getCurrentDomWithStyles = () => {
      * CSS stylesheet are copied in the document, and computed style are inlined in the dom.
      * 
      * @param {Element} node        Source element to be cloned
-     * @param {boolean} importCss   Whether or not to import css style sheet or to inline on css properties
      * 
-     * @returns {Promise.Element}   Root element of the new clone containing all the styles.
+     * @returns {Element}   Root element of the new clone containing all the styles.
      */
-    async function deepCloneWithStyles(node, importCss) {
+    function deepCloneWithStyles(node) {
         if (isIgnored(node)) {
-            return Promise.resolve(null);
-        }
-
-        if(hasTagName(node, 'style') && !importCss){
-            console.log('ignore style node');
-            return Promise.resolve(null);
+            return null;
         }
 
         if (hasTagName(node, 'img')) {
             return computeImageNode(node);
         }
 
-        if (hasTagName(node, 'link')) {
-            return computeLinkNode(node, importCss);
-        }
-
         const clone = node.cloneNode(false);
 
         if (isComputeStyle(node)) {
-            updateStyle(clone, node, importCss);
+            updateStyle(clone, node);
         }
 
         for (let child of node.childNodes) {
-            const cloneChild = await deepCloneWithStyles(child, importCss);
+            const cloneChild = deepCloneWithStyles(child);
             
             if(cloneChild){
                 clone.appendChild(cloneChild);
@@ -429,20 +395,86 @@ const getCurrentDomWithStyles = () => {
 
         }
 
-        return Promise.resolve(clone);
+        return clone;
     }
 
+    function finalize(node, styleSheets){
+        const doc = document.implementation.createDocument("", "", document.doctype);
+        doc.appendChild(node);
+
+        if(document.head === undefined){
+            const html = document.getElementsByTagName('html')[0];
+            html.appendChild(document.createElement('head'));
+        }
+
+        const allNodes = doc.querySelectorAll('*');
+
+        for(let rules of getUsedStyles(styleSheets, allNodes)){
+            if(rules.length == 0){
+                continue;
+            }
+
+            const sortedRules = Array.from(new Map([...rules.entries()].sort()).values());
+
+            const usedStyle = document.createElement('style');
+            usedStyle.textContent = sortedRules.join(' ');
+            doc.head.appendChild(usedStyle);
+        }
+
+        return doc;
+    }
+
+    function getUsedStyles(styleSheets, nodes) {
+        const used = [];
+
+        for (let i = 0; i < styleSheets.length; ++i) {
+            used.push(new Map());
+        }
+
+        for (let i in styleSheets) {
+            const rules = styleSheets[i];
+            for (let r = 0; r < rules.length; ++r) {
+                if (!used[i].has(r) && document.querySelectorAll(rules[r].selectorText).length > 0) {
+                    used[i].set( r, rules[r].cssText);
+                }
+            }
+        }
+
+        return used;
+    }
+
+    async function createDomElements(){
+        const styleSheets = initializeStyleSheets();
+        
+        const clone = deepCloneWithStyles(document.documentElement);
+
+        return Promise.all([Promise.resolve(clone), styleSheets]);
+    }
+
+    function createErrorDocument(error){
+        const doc = document.implementation.createDocument("", "", document.doctype);
+
+        const htmlNode = document.createElement('html');
+        const bodyNode = document.createElement('body');
+        htmlNode.appendChild(bodyNode);
+        bodyNode.innerHTML = error;
+        doc.appendChild(htmlNode);
+
+        return htmlNode;
+    }
 
     return (async () => {
-        let clone = null;
+        let doc;
 
         try{
-            clone = await deepCloneWithStyles(document.documentElement, true);
+            [rootNode, styleSheets] = await createDomElements();
+            doc = finalize(rootNode, styleSheets);
         }
         catch(e){
-            clone = await deepCloneWithStyles(document.documentElement, false);
+            doc = createErrorDocument(e);
         }
 
-        return clone.outerHTML;
+        const ns = new XMLSerializer();
+        return ns.serializeToString(doc);;
     })();
 };
